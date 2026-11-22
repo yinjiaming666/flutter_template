@@ -1,4 +1,4 @@
-enum CacheKeys { token, userinfo }
+enum CacheKeys { token, userinfo, appLanguage }
 
 extension CacheKeysExtension on CacheKeys {
   String get val {
@@ -7,6 +7,8 @@ extension CacheKeysExtension on CacheKeys {
         return 'token';
       case CacheKeys.userinfo:
         return 'userinfo';
+      case CacheKeys.appLanguage:
+        return 'app_language';
     }
   }
 }

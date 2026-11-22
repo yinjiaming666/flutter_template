@@ -8,7 +8,8 @@ class SharedPreferencesHelper {
   }
 
   String? getString(String key) {
-    return _preferences?.getString(key);
+    final value = _preferences?.get(key);
+    return value is String ? value : null;
   }
 
   Future<bool> setString(String key, String value) async {

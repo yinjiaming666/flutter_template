@@ -17,17 +17,10 @@ class CommonWidget {
       width: width,
       height: height,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(borderRadius),
-      ),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(borderRadius)),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: fontSize.w,
-          color: textColor,
-          fontWeight: fontWeight,
-        ),
+        style: TextStyle(fontSize: fontSize, color: textColor, fontWeight: fontWeight),
       ),
     );
   }
@@ -58,11 +51,7 @@ class CommonWidget {
   static Widget purpleText(String text, double fontSize, {double? height}) {
     return Text(
       text,
-      style: TextStyle(
-        fontSize: fontSize.w,
-        color: const Color.fromRGBO(157, 117, 227, 1),
-        height: height,
-      ),
+      style: TextStyle(fontSize: fontSize, color: const Color.fromRGBO(157, 117, 227, 1), height: height),
     );
   }
 

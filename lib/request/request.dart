@@ -1,46 +1,86 @@
+import 'dart:async';
+
 import 'package:app/config.dart';
 import 'package:app/enum.dart';
 import 'package:app/main.dart';
+import 'package:app/model/response/response_decoding.dart';
+import 'package:app/request/http_log_interceptor.dart';
 import 'package:app/router.dart';
 import 'package:app/tool/route_helper.dart';
 import 'package:app/tool/toast_helper.dart';
+import 'package:app/widget/loading_widget.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class Request {
-  final Dio dio = Dio();
-  final CancelToken token = CancelToken();
-
-  Request() {
+  Request({Dio? client}) : dio = client ?? Dio() {
     dio.options
       ..baseUrl = Config.serverUrl
       ..connectTimeout = const Duration(seconds: 30)
       ..receiveTimeout = const Duration(seconds: 30)
-      ..validateStatus = (int? status) => status != null && status > 0;
-
+      ..validateStatus = (status) =>
+          status != null && status >= 200 && status < 300;
+    if (kDebugMode &&
+        dio.interceptors.whereType<HttpLogInterceptor>().isEmpty) {
+      dio.interceptors.add(HttpLogInterceptor(logger));
+    }
     dio.interceptors.add(
       InterceptorsWrapper(
-        onResponse: (response, handler) {
-          if (response.statusCode == HttpRespCode.error.val) {
-            ToastHelper.showToast(msg: '服务器异常', channel: 'error');
-            return;
+        onResponse: (response, handler) async {
+          final data = response.data;
+          if (response.statusCode == HttpRespCode.needLogin.val ||
+              (data is Map &&
+                  responseCode(data['code']) == HttpRespCode.needLogin.val)) {
+            await _handleUnauthorized(response.requestOptions, data);
           }
-          if (response.statusCode == HttpRespCode.notFound.val) {
-            ToastHelper.showToast(msg: '接口不存在', channel: 'error');
-            return;
-          }
-          if (response.data is Map &&
-              response.data['code'] == HttpRespCode.needLogin.val) {
-            ToastHelper.showToast(
-              msg: response.data['msg']?.toString() ?? '请登录',
-              channel: 'needLogin',
+          handler.next(response);
+        },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == HttpRespCode.needLogin.val) {
+            await _handleUnauthorized(
+              error.requestOptions,
+              error.response?.data,
             );
-            RouterHelper.pushWithNoContext(Routes.loginPage, clearStack: true);
-            return;
           }
-          return handler.next(response);
+          handler.next(error);
         },
       ),
+    );
+  }
+
+  static const _sessionVersionKey = 'app.request.sessionVersion';
+  final Dio dio;
+  final CancelToken token = CancelToken();
+
+  Future<void> _handleUnauthorized(RequestOptions options, Object? data) async {
+    final version = options.extra[_sessionVersionKey];
+    final requestToken = options.headers['Token']?.toString() ?? '';
+    final state = globalAppStateInstance;
+    if (version is! int ||
+        !await state.expireIfCurrent(version, requestToken)) {
+      return;
+    }
+    if (version != state.sessionVersion) return;
+    final message = data is Map ? data['msg']?.toString() : null;
+    ToastHelper.showToast(
+      msg: message?.isNotEmpty == true
+          ? message!
+          : currentAppLocalizations.signInAgain,
+      channel: 'needLogin',
+    );
+    unawaited(
+      RouterHelper.pushWithNoContext<void>(AppRoute.login, clearStack: true),
+    );
+  }
+
+  Options _options(Options? options) {
+    final resolved = options ?? Options();
+    final state = globalAppStateInstance;
+    return resolved.copyWith(
+      contentType: resolved.contentType ?? Headers.jsonContentType,
+      headers: <String, dynamic>{'Token': state.token, ...?resolved.headers},
+      extra: {...?resolved.extra, _sessionVersionKey: state.sessionVersion},
     );
   }
 
@@ -51,19 +91,15 @@ class Request {
     CancelToken? t,
     bool showLoading = false,
     BuildContext? context,
-  }) async {
-    final String requestPath = '${Config.apiPrefix}$path';
-    final Options options =
-        opts ??
-        Options(contentType: Headers.jsonContentType, headers: _headers());
-    final Response response = await dio.post(
-      requestPath,
-      data: data,
-      options: options,
-      cancelToken: t ?? token,
-    );
-    return _normalizeResponse(response.data);
-  }
+  }) => _send(
+    path,
+    method: 'POST',
+    options: opts,
+    body: data,
+    cancelToken: t,
+    showLoading: showLoading,
+    context: context,
+  );
 
   Future<Map<String, dynamic>> get(
     String path, {
@@ -72,36 +108,53 @@ class Request {
     CancelToken? t,
     bool showLoading = false,
     BuildContext? context,
-  }) async {
-    final String requestPath = '${Config.apiPrefix}$path';
-    final Options options =
-        opts ??
-        Options(contentType: Headers.jsonContentType, headers: _headers());
-    final Response response = await dio.get(
-      requestPath,
-      queryParameters: data,
-      options: options,
-      cancelToken: t ?? token,
-    );
-    return _normalizeResponse(response.data);
-  }
+  }) => _send(
+    path,
+    method: 'GET',
+    options: opts,
+    query: data,
+    cancelToken: t,
+    showLoading: showLoading,
+    context: context,
+  );
 
-  Map<String, dynamic> _headers() {
-    final String token =
-        sharedPreferencesInstance.getString(CacheKeys.token.val) ?? '';
-    return {'Token': token};
+  Future<Map<String, dynamic>> _send(
+    String path, {
+    required String method,
+    Options? options,
+    Object? body,
+    Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    required bool showLoading,
+    BuildContext? context,
+  }) async {
+    final overlay = context != null && context.mounted
+        ? Overlay.maybeOf(context, rootOverlay: true) ??
+              navigatorKey.currentState?.overlay
+        : navigatorKey.currentState?.overlay;
+    final dismiss = showLoading && overlay != null
+        ? showAppLoading(overlay)
+        : null;
+    try {
+      final response = await dio.request<dynamic>(
+        '${Config.apiPrefix}$path',
+        data: body,
+        queryParameters: query,
+        options: _options(options).copyWith(method: method),
+        cancelToken: cancelToken ?? token,
+      );
+      return _normalizeResponse(response.data);
+    } finally {
+      dismiss?.call();
+    }
   }
 
   Map<String, dynamic> _normalizeResponse(dynamic data) {
-    if (data is Map<String, dynamic>) {
-      return data;
-    }
-    if (data is Map) {
-      return Map<String, dynamic>.from(data);
-    }
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
     return <String, dynamic>{
       'code': HttpRespCode.fail.val,
-      'msg': '响应格式错误',
+      'msg': currentAppLocalizations.responseFormatError,
       'data': data,
     };
   }

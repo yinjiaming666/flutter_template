@@ -39,3 +39,5 @@ type ErrorResponse = {
   data?: unknown
 }
 ```
+
+客户端在业务失败时沿用返回 `null` 的约定。成功响应应包含详情对象，缺少对象或无法解析时抛出 `ApiException`。

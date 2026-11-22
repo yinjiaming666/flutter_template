@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:app/generated/json/base/json_field.dart';
 import 'package:app/generated/json/base/page_resp_entity.dart';
 import 'package:app/model/response/page_data_impl.dart';
+import 'package:app/model/response/response_decoding.dart';
 
 class PageRespEntity<T> {
   int? code;
@@ -11,8 +12,12 @@ class PageRespEntity<T> {
 
   PageRespEntity();
 
-  factory PageRespEntity.fromJson(Map<String, dynamic> json) =>
-      $PageRespEntityFromJson<T>(json);
+  factory PageRespEntity.fromJson(Map<String, dynamic> json) => decodeResponse(
+    json,
+    $PageRespEntityFromJson<T>,
+    acceptsData: (value) => value is Map<String, dynamic>,
+    emptyData: const {'data': <dynamic>[]},
+  );
 
   Map<String, dynamic> toJson() => $PageRespEntityToJson(this);
 
@@ -34,8 +39,12 @@ class PageData<T> implements PageDataImpl {
 
   PageData();
 
-  factory PageData.fromJson(Map<String, dynamic> json) =>
-      $PageDataFromJson<T>(json);
+  factory PageData.fromJson(Map<String, dynamic> json) {
+    if (json['data'] is! List) {
+      throw const FormatException('Expected a list at data.data');
+    }
+    return $PageDataFromJson<T>(json);
+  }
 
   Map<String, dynamic> toJson() => $PageDataToJson(this);
 

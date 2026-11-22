@@ -1,5 +1,8 @@
 import 'package:app/global_app_state.dart';
+import 'package:app/l10n/app_localizations.dart';
+import 'package:app/l10n/l10n.dart';
 import 'package:app/router.dart';
+import 'package:app/tool/app_language.dart';
 import 'package:app/tool/shared_preferences.dart';
 import 'package:event_bus/event_bus.dart';
 import 'package:flutter/material.dart';
@@ -11,14 +14,21 @@ import 'package:provider/provider.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final SharedPreferencesHelper sharedPreferencesInstance =
     SharedPreferencesHelper();
-final GlobalAppState globalAppStateInstance = GlobalAppState();
+final GlobalAppState globalAppStateInstance = GlobalAppState(
+  sharedPreferencesInstance,
+);
+final appLanguageController = AppLanguageController(sharedPreferencesInstance);
 final EventBus globalEventBus = EventBus();
 final Logger logger = Logger();
+
+AppLocalizations get currentAppLocalizations =>
+    navigatorKey.currentContext?.l10n ?? defaultAppLocalizations;
 
 Future<void> _init() async {
   WidgetsFlutterBinding.ensureInitialized();
   Logger.level = Level.info;
   await sharedPreferencesInstance.init();
+  globalAppStateInstance.restore();
   Routes.configureRoutes();
 
   await SystemChrome.setPreferredOrientations([
@@ -60,15 +70,22 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => globalAppStateInstance),
+        ChangeNotifierProvider.value(value: globalAppStateInstance),
+        ChangeNotifierProvider.value(value: appLanguageController),
       ],
-      child: MaterialApp(
-        title: 'Flutter Template',
-        debugShowCheckedModeBanner: false,
-        theme: lightTheme,
-        navigatorKey: navigatorKey,
-        onGenerateRoute: Routes.router.generator,
-        navigatorObservers: [AppRouteObserver().routeObserver],
+      child: Consumer<AppLanguageController>(
+        builder: (context, languages, child) => MaterialApp(
+          onGenerateTitle: (context) => context.l10n.appTitle,
+          debugShowCheckedModeBanner: false,
+          theme: lightTheme,
+          locale: languages.language.locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          navigatorKey: navigatorKey,
+          onGenerateRoute: Routes.generateRoute,
+          onGenerateInitialRoutes: Routes.generateInitialRoutes,
+          navigatorObservers: [AppRouteObserver().routeObserver],
+        ),
       ),
     );
   }

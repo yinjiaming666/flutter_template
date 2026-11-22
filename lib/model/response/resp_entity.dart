@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:app/generated/json/base/resp_entity.base.dart';
+import 'package:app/model/response/response_decoding.dart';
 
 class RespEntity<T> {
   int? code;
@@ -10,7 +11,7 @@ class RespEntity<T> {
   RespEntity();
 
   factory RespEntity.fromJson(Map<String, dynamic> json) =>
-      $RespEntityFromJson<T>(json);
+      decodeResponse(json, $RespEntityFromJson<T>);
 
   Map<String, dynamic> toJson() => $RespEntityToJson(this);
 
